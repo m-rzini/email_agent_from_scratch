@@ -1,0 +1,11 @@
+{
+  "dockerfile_lines": [],
+  "graphs": {
+    "langgraph101": "./src/email_assistant/langgraph_101.py:app"
+  },
+  "python_version": "3.13",
+  "env": ".env",
+  "dependencies": [
+    "."
+  ]
+}
