@@ -10,6 +10,10 @@ def schedule_meeting(
     date_str = preferred_day.strftime("%A, %B %d, %Y")
     return f"Meeting '{subject}' scheduled on {date_str} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
 
+    #Exemple: Meeting 'Project Sync' scheduled on Friday, September 12, 2025 at 10 for 30 minutes with 3 attendees
+
+
+
 @tool
 def check_calendar_availability(day: str) -> str:
     """Check calendar availability for a given day."""
