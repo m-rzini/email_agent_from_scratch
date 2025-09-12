@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
+from langgraph.graph import MessagesState
 
 class RouterSchema(BaseModel):
     """Analyze the unread email and route it according to its content."""
@@ -12,3 +13,9 @@ class RouterSchema(BaseModel):
         "'notify' for important information that doesn't need a response, "
         "'respond' for emails that need a reply",
     )
+
+
+class State(MessagesState):
+    # This state class has the messages key build in
+    email_input: dict
+    classification_decision: Literal["ignore", "respond", "notify"]
