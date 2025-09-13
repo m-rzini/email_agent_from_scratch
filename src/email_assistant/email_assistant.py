@@ -4,11 +4,12 @@ from typing import Literal
 from langchain.chat_models import init_chat_model
 
 from email_assistant.tools import get_tools, get_tools_by_name
-from email_assistant.schemas import State, RouterSchema
-from email_assistant.prompts import agent_system_prompt, default_background, default_response_preferences, default_cal_preferences
+from email_assistant.schemas import State, RouterSchema, StateInput
+from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
 from email_assistant.tools.default import AGENT_TOOLS_PROMPT
-
+from email_assistant.utils import parse_email, format_email_markdown
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Command
 from dotenv import load_dotenv
 load_dotenv(".env")
 
@@ -94,3 +95,74 @@ agent_builder.add_edge("environment", "llm_call")
 
 # Compile the agent
 agent = agent_builder.compile()
+
+
+def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]:
+    """Analyze email content to decide if we should respond, notify, or ignore.
+
+    The triage step prevents the assistant from wasting time on:
+    - Marketing emails and spam
+    - Company-wide announcements
+    - Messages meant for other teams
+    """
+    author, to, subject, email_thread = parse_email(state["email_input"])
+    system_prompt = triage_system_prompt.format(
+        background=default_background,
+        triage_instructions=default_triage_instructions
+    )
+
+    user_prompt = triage_user_prompt.format(
+        author=author, to=to, subject=subject, email_thread=email_thread
+    )
+
+    # Create email markdown for Agent Inbox in case of notification  
+    email_markdown = format_email_markdown(subject, author, to, email_thread)
+
+    # Run the router LLM
+    result = llm_router.invoke(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+    )
+
+    # Decision
+    classification = result.classification
+
+    if classification == "respond":
+        print("📧 Classification: RESPOND - This email requires a response")
+        goto = "response_agent"
+        # Add the email to the messages
+        update = {
+            "classification_decision": result.classification,
+            "messages": [{"role": "user",
+                            "content": f"Respond to the email: {email_markdown}"
+                        }],
+        }
+    elif result.classification == "ignore":
+        print("🚫 Classification: IGNORE - This email can be safely ignored")
+        update =  {
+            "classification_decision": result.classification,
+        }
+        goto = END
+    elif result.classification == "notify":
+        # If real life, this would do something else
+        print("🔔 Classification: NOTIFY - This email contains important information")
+        update = {
+            "classification_decision": result.classification,
+        }
+        goto = END
+    else:
+        raise ValueError(f"Invalid classification: {result.classification}")
+    return Command(goto=goto, update=update)
+
+
+# Build workflow
+overall_workflow = (
+    StateGraph(State, input=StateInput)
+    .add_node(triage_router)
+    .add_node("response_agent", agent)
+    .add_edge(START, "triage_router")
+)
+
+email_assistant = overall_workflow.compile()
